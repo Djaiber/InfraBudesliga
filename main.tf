@@ -18,7 +18,7 @@ module "codebuild" {
   aws_region         = var.aws_region
 }
 
-# --- Initial image build (runs once on first apply) ---
+# --- Initial image build via CodeBuild (no local Docker needed) ---
 
 resource "null_resource" "initial_image_build" {
   triggers = {
@@ -27,22 +27,31 @@ resource "null_resource" "initial_image_build" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      echo "Building and pushing initial Lambda image..."
-      cd ${var.backend_repo_path}
-
-      # Login to ECR
-      aws ecr get-login-password --region ${var.aws_region} | \
-        docker login --username AWS --password-stdin ${module.ecr.repository_url}
-
-      # Build and push
-      docker build -t ${module.ecr.repository_url}:latest .
-      docker push ${module.ecr.repository_url}:latest
-
-      echo "Initial image pushed to ${module.ecr.repository_url}:latest"
+      echo "Triggering CodeBuild to build initial Lambda image..."
+      BUILD_ID=$(aws codebuild start-build \
+        --project-name ${module.codebuild.project_name} \
+        --region ${var.aws_region} \
+        --query 'build.id' --output text)
+      echo "Build started: $BUILD_ID"
+      echo "Waiting for build to complete (this may take 2-4 minutes)..."
+      aws codebuild batch-get-builds --ids "$BUILD_ID" --region ${var.aws_region} > /dev/null
+      while true; do
+        STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --region ${var.aws_region} \
+          --query 'builds[0].buildStatus' --output text)
+        if [ "$STATUS" = "SUCCEEDED" ]; then
+          echo "Build succeeded."
+          break
+        elif [ "$STATUS" = "IN_PROGRESS" ]; then
+          sleep 10
+        else
+          echo "Build failed with status: $STATUS"
+          exit 1
+        fi
+      done
     EOT
   }
 
-  depends_on = [module.ecr]
+  depends_on = [module.ecr, module.codebuild]
 }
 
 # --- IAM ---
