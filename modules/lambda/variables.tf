@@ -3,16 +3,13 @@ variable "function_name" {
 }
 
 variable "handler" {
-  type = string
+  type        = string
+  description = "Lambda CMD override — the module path to the handler function"
 }
 
-variable "zip_path" {
-  type = string
-}
-
-variable "source_code_hash" {
-  type    = string
-  default = null
+variable "image_uri" {
+  type        = string
+  description = "ECR image URI (repo:tag)"
 }
 
 variable "role_arn" {

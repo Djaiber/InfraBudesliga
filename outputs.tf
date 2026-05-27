@@ -24,3 +24,13 @@ output "websocket_api_id" {
   description = "API Gateway WebSocket API ID"
   value       = module.websocket_api.api_id
 }
+
+output "ecr_repository_url" {
+  description = "ECR repository URL for Lambda container images"
+  value       = module.ecr.repository_url
+}
+
+output "codebuild_project_name" {
+  description = "CodeBuild project name — trigger with: aws codebuild start-build --project-name <this>"
+  value       = module.codebuild.project_name
+}

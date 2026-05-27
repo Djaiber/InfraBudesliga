@@ -1,9 +1,48 @@
-# --- Lambda deployment package ---
-# Built by `make build-lambda` (scripts/build_lambda.sh) BEFORE terraform apply.
-# Uses Docker to install Linux-compatible wheels for cryptography/pydantic/etc.
+# --- ECR Repository ---
 
-locals {
-  lambda_zip_path = "${path.module}/lambda_package/backend.zip"
+module "ecr" {
+  source = "./modules/ecr"
+
+  repository_name = "${var.project_name}-lambda"
+}
+
+# --- CodeBuild Project ---
+
+module "codebuild" {
+  source = "./modules/codebuild"
+
+  project_name       = var.project_name
+  ecr_repository_url = module.ecr.repository_url
+  ecr_repository_arn = module.ecr.repository_arn
+  backend_repo_url   = var.backend_repo_url
+  aws_region         = var.aws_region
+}
+
+# --- Initial image build (runs once on first apply) ---
+
+resource "null_resource" "initial_image_build" {
+  triggers = {
+    ecr_repo = module.ecr.repository_url
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Building and pushing initial Lambda image..."
+      cd ${var.backend_repo_path}
+
+      # Login to ECR
+      aws ecr get-login-password --region ${var.aws_region} | \
+        docker login --username AWS --password-stdin ${module.ecr.repository_url}
+
+      # Build and push
+      docker build -t ${module.ecr.repository_url}:latest .
+      docker push ${module.ecr.repository_url}:latest
+
+      echo "Initial image pushed to ${module.ecr.repository_url}:latest"
+    EOT
+  }
+
+  depends_on = [module.ecr]
 }
 
 # --- IAM ---
@@ -38,6 +77,8 @@ locals {
     LOG_FORMAT               = "json"
     LOCAL_MODE               = "false"
   }
+
+  image_uri = "${module.ecr.repository_url}:latest"
 }
 
 # --- Lambda functions ---
@@ -47,10 +88,11 @@ module "lambda_connect" {
 
   function_name    = "${var.project_name}-connect"
   handler          = "src.interfaces.websocket_handlers.connect.handler"
-  zip_path         = local.lambda_zip_path
-  source_code_hash = fileexists(local.lambda_zip_path) ? filebase64sha256(local.lambda_zip_path) : null
+  image_uri        = local.image_uri
   role_arn         = module.iam.role_arn
   environment_vars = local.common_env
+
+  depends_on = [null_resource.initial_image_build]
 }
 
 module "lambda_disconnect" {
@@ -58,10 +100,11 @@ module "lambda_disconnect" {
 
   function_name    = "${var.project_name}-disconnect"
   handler          = "src.interfaces.websocket_handlers.disconnect.handler"
-  zip_path         = local.lambda_zip_path
-  source_code_hash = fileexists(local.lambda_zip_path) ? filebase64sha256(local.lambda_zip_path) : null
+  image_uri        = local.image_uri
   role_arn         = module.iam.role_arn
   environment_vars = local.common_env
+
+  depends_on = [null_resource.initial_image_build]
 }
 
 module "lambda_default" {
@@ -69,10 +112,11 @@ module "lambda_default" {
 
   function_name    = "${var.project_name}-default"
   handler          = "src.interfaces.websocket_handlers.default.handler"
-  zip_path         = local.lambda_zip_path
-  source_code_hash = fileexists(local.lambda_zip_path) ? filebase64sha256(local.lambda_zip_path) : null
+  image_uri        = local.image_uri
   role_arn         = module.iam.role_arn
   environment_vars = local.common_env
+
+  depends_on = [null_resource.initial_image_build]
 }
 
 module "lambda_replay_event" {
@@ -80,10 +124,11 @@ module "lambda_replay_event" {
 
   function_name    = "${var.project_name}-replay-event"
   handler          = "src.interfaces.event_handlers.replay_event.handler"
-  zip_path         = local.lambda_zip_path
-  source_code_hash = fileexists(local.lambda_zip_path) ? filebase64sha256(local.lambda_zip_path) : null
+  image_uri        = local.image_uri
   role_arn         = module.iam.role_arn
   environment_vars = local.common_env
+
+  depends_on = [null_resource.initial_image_build]
 }
 
 module "lambda_game_engine_tick" {
@@ -91,10 +136,11 @@ module "lambda_game_engine_tick" {
 
   function_name    = "${var.project_name}-game-engine-tick"
   handler          = "src.interfaces.event_handlers.game_engine_tick.handler"
-  zip_path         = local.lambda_zip_path
-  source_code_hash = fileexists(local.lambda_zip_path) ? filebase64sha256(local.lambda_zip_path) : null
+  image_uri        = local.image_uri
   role_arn         = module.iam.role_arn
   environment_vars = local.common_env
+
+  depends_on = [null_resource.initial_image_build]
 }
 
 module "lambda_room_merger" {
@@ -102,10 +148,11 @@ module "lambda_room_merger" {
 
   function_name    = "${var.project_name}-room-merger"
   handler          = "src.interfaces.event_handlers.room_merger.handler"
-  zip_path         = local.lambda_zip_path
-  source_code_hash = fileexists(local.lambda_zip_path) ? filebase64sha256(local.lambda_zip_path) : null
+  image_uri        = local.image_uri
   role_arn         = module.iam.role_arn
   environment_vars = local.common_env
+
+  depends_on = [null_resource.initial_image_build]
 }
 
 # --- WebSocket API Gateway ---
@@ -113,17 +160,16 @@ module "lambda_room_merger" {
 module "websocket_api" {
   source = "./modules/websocket_api"
 
-  api_name                    = "${var.project_name}-ws"
-  connect_lambda_invoke_arn   = module.lambda_connect.invoke_arn
+  api_name                     = "${var.project_name}-ws"
+  connect_lambda_invoke_arn    = module.lambda_connect.invoke_arn
   disconnect_lambda_invoke_arn = module.lambda_disconnect.invoke_arn
-  default_lambda_invoke_arn   = module.lambda_default.invoke_arn
-  connect_function_name       = module.lambda_connect.function_name
-  disconnect_function_name    = module.lambda_disconnect.function_name
-  default_function_name       = module.lambda_default.function_name
+  default_lambda_invoke_arn    = module.lambda_default.invoke_arn
+  connect_function_name        = module.lambda_connect.function_name
+  disconnect_function_name     = module.lambda_disconnect.function_name
+  default_function_name        = module.lambda_default.function_name
 }
 
 # --- Post-deploy: set WEBSOCKET_API_ENDPOINT on WS Lambdas ---
-# Breaks the circular dependency: Lambdas need the API URL, but the API needs Lambda ARNs.
 
 resource "null_resource" "set_ws_endpoint" {
   triggers = {

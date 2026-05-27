@@ -4,16 +4,15 @@
 
 - **Terraform** >= 1.6 (`brew install terraform`)
 - **AWS CLI** v2 (`brew install awscli`)
-- **Docker Desktop** — must be running before `make apply`
+- **Docker Desktop** — must be running for image builds
 - **jq** (`brew install jq`)
-- **rsync** (pre-installed on macOS)
 - **Node.js** >= 18 (for FrontendBudes)
 
 ## Repository Layout
 
 ```
 BudesligeRoot/
-├── BackendBudes/      # Python Lambda code (sibling)
+├── BackendBudes/      # Python Lambda code (sibling) — has Dockerfile
 ├── FrontendBudes/     # Vite SPA (sibling)
 └── InfraBudes/        # This repo — Terraform
 ```
@@ -57,15 +56,17 @@ cognito_app_client_id = "4it2o2m9dbtig3fv4jhp2r0vgu"
 # 2. Initialize Terraform
 make init
 
-# 3. Build Lambda zip + deploy everything
+# 3. Deploy everything (creates ECR, builds + pushes image, deploys Lambdas)
 make apply
 ```
 
 This will:
-- Pull the SAM Docker image (first time ~500MB download)
-- Install Python deps inside Docker (Linux-compatible wheels)
-- Zip the Lambda package (~40-50MB)
-- Create all AWS resources via Terraform
+- Create an ECR repository (`connected-arena-lambda`)
+- Create a CodeBuild project for CI builds
+- Build the Lambda container image from BackendBudes/Dockerfile
+- Push the image to ECR
+- Create 6 Lambda functions using that image (different CMD per handler)
+- Deploy API Gateway WebSocket API, IAM role, EventBridge rules
 - Set WEBSOCKET_API_ENDPOINT on the WebSocket Lambdas
 
 ## After Deploy
@@ -87,10 +88,15 @@ npm run dev
 If you change BackendBudes code:
 ```bash
 cd InfraBudes
-make apply
+make redeploy
 ```
 
-Terraform detects code changes via `filebase64sha256` on the zip.
+This builds a new Docker image, pushes to ECR, and updates all 6 Lambdas.
+
+For CI/CD: the CodeBuild project can be triggered to build automatically:
+```bash
+aws codebuild start-build --project-name $(terraform output -raw codebuild_project_name)
+```
 
 ## Smoke Test
 
@@ -112,16 +118,17 @@ wscat -c "$(terraform output -raw websocket_url)?token=test"
 make destroy
 ```
 
-This removes Lambdas, API Gateway, IAM, and EventBridge rules.
+This removes Lambdas, API Gateway, IAM, ECR, CodeBuild, and EventBridge rules.
 It does NOT delete DynamoDB, S3, or the EventBridge bus (those are data sources only).
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---------|-----|
-| `Docker is not running` | Start Docker Desktop |
+| `Docker is not running` | Start Docker Desktop (needed for first deploy + redeploys) |
 | `ExpiredToken` | Re-authenticate with `aws sso login` |
 | `AccessDenied` on Lambda | IAM eventual consistency — wait 60s, retry |
-| Code changes not reflecting | Delete `lambda_package/build/` then `make apply` |
-| Zip exceeds 50MB | Remove unused deps or switch to Lambda layers |
+| Code changes not reflecting | Run `make redeploy` (builds new image + updates Lambdas) |
 | `terraform init` fails | Check internet connection, run `terraform init -upgrade` |
+| CodeBuild fails | Check logs: `aws logs tail /aws/codebuild/connected-arena-lambda-build` |
+| Image too large | Unlikely with container images (10GB limit). Only an issue with zip (50MB) |

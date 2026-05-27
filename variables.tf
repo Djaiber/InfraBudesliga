@@ -16,6 +16,12 @@ variable "backend_repo_path" {
   default     = "../BackendBudes"
 }
 
+variable "backend_repo_url" {
+  type        = string
+  description = "HTTPS clone URL for the BackendBudes GitHub repo (used by CodeBuild)"
+  default     = "https://github.com/Djaiber/BackendBudesliga.git"
+}
+
 variable "frontend_repo_path" {
   type        = string
   description = "Relative or absolute path to the FrontendBudes repository"
