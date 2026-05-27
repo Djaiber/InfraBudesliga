@@ -34,3 +34,8 @@ output "codebuild_project_name" {
   description = "CodeBuild project name — trigger with: aws codebuild start-build --project-name <this>"
   value       = module.codebuild.project_name
 }
+
+output "github_actions_role_arn" {
+  description = "IAM role ARN for GitHub Actions — add as AWS_ROLE_ARN secret in repo settings"
+  value       = module.github_oidc.role_arn
+}

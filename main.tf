@@ -199,6 +199,25 @@ resource "null_resource" "set_ws_endpoint" {
   ]
 }
 
+# --- GitHub Actions OIDC (allows CI to push images + update Lambdas) ---
+
+module "github_oidc" {
+  source = "./modules/github_oidc"
+
+  github_repo        = "Djaiber/BackendBudesliga"
+  role_name          = "${var.project_name}-github-actions"
+  ecr_repository_arn = module.ecr.repository_arn
+  aws_region         = var.aws_region
+  lambda_function_arns = [
+    module.lambda_connect.function_arn,
+    module.lambda_disconnect.function_arn,
+    module.lambda_default.function_arn,
+    module.lambda_replay_event.function_arn,
+    module.lambda_game_engine_tick.function_arn,
+    module.lambda_room_merger.function_arn,
+  ]
+}
+
 # --- EventBridge Rules & Schedules ---
 
 module "eventbridge_rules" {
