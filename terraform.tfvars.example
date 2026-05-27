@@ -1,0 +1,11 @@
+# Copy this file to terraform.tfvars and fill in real values.
+# terraform.tfvars is gitignored — never commit it.
+
+cognito_user_pool_id  = ""
+cognito_app_client_id = ""
+
+# Optional overrides (defaults are fine for dev)
+# aws_region       = "eu-central-1"
+# project_name     = "connected-arena"
+# accept_any_token = true   # WARNING: set to false before any production use
+# log_level        = "INFO"
