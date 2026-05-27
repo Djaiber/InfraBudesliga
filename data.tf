@@ -1,3 +1,5 @@
+data "aws_caller_identity" "current" {}
+
 data "aws_dynamodb_table" "connected_arena" {
   name = var.dynamodb_table_name
 }

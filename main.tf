@@ -72,19 +72,22 @@ module "iam" {
 
 locals {
   common_env = {
-    DYNAMODB_TABLE           = var.dynamodb_table_name
-    EVENT_BUS_NAME           = var.event_bus_name
-    S3_REPLAY_BUCKET         = var.s3_replay_bucket
-    BEDROCK_MODEL_ID         = var.bedrock_model_id
-    BEDROCK_REGION           = var.aws_region
-    PROMPT_CACHE_TTL_SECONDS = "60"
-    COGNITO_USER_POOL_ID     = var.cognito_user_pool_id
-    COGNITO_APP_CLIENT_ID    = var.cognito_app_client_id
-    COGNITO_REGION           = var.aws_region
-    ACCEPT_ANY_TOKEN         = tostring(var.accept_any_token)
-    LOG_LEVEL                = var.log_level
-    LOG_FORMAT               = "json"
-    LOCAL_MODE               = "false"
+    AWS_ACCOUNT_ID                    = data.aws_caller_identity.current.account_id
+    DYNAMODB_TABLE                    = var.dynamodb_table_name
+    EVENT_BUS_NAME                    = var.event_bus_name
+    S3_REPLAY_BUCKET                  = var.s3_replay_bucket
+    BEDROCK_MODEL_ID                  = var.bedrock_model_id
+    BEDROCK_REGION                    = var.aws_region
+    PROMPT_CACHE_TTL_SECONDS          = "60"
+    COGNITO_USER_POOL_ID              = var.cognito_user_pool_id
+    COGNITO_APP_CLIENT_ID             = var.cognito_app_client_id
+    COGNITO_REGION                    = var.aws_region
+    ACCEPT_ANY_TOKEN                  = tostring(var.accept_any_token)
+    LOG_LEVEL                         = var.log_level
+    LOG_FORMAT                        = "json"
+    LOCAL_MODE                        = "false"
+    CLOSEST_PREDICTION_POINTS         = "75,50,25"
+    REPLAY_DATA_PATH                  = "replay-data"
   }
 
   image_uri = "${module.ecr.repository_url}:latest"

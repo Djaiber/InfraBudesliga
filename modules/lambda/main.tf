@@ -15,6 +15,6 @@ resource "aws_lambda_function" "this" {
   }
 
   lifecycle {
-    ignore_changes = [environment]
+    ignore_changes = [image_uri]
   }
 }
